@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Latency Budget: perception → policy → actuation pipeline deadline planner. Runs entirely in your browser.">
+  <title>Latency Budget</title>
+  <link rel="icon" href="data:,">
+  <link data-trunk rel="rust" href="crates/lb_web/Cargo.toml" data-wasm-opt="s">
+  <link data-trunk rel="css" href="assets/style.css">
+  <link data-trunk rel="copy-file" href="assets/boot.js">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <h1>Latency Budget</h1>
+      <span class="tag" data-ko="제어 루프 지연 예산 플래너" data-en="Control-loop latency planner">제어 루프 지연 예산 플래너</span>
+    </div>
+    <nav class="tools" aria-label="Toolbar">
+      <div class="presets" role="group" data-ko-label="예시 프리셋 (가상, 수정 가능)" data-en-label="Illustrative presets (synthetic, editable)" aria-label="예시 프리셋 (가상, 수정 가능)">
+        <button type="button" id="preset-vision" aria-pressed="true" data-ko="비전 제어" data-en="Vision control">비전 제어</button>
+        <button type="button" id="preset-vla" aria-pressed="false" data-ko="로컬 VLA 정책" data-en="Local VLA policy">로컬 VLA 정책</button>
+        <button type="button" id="preset-remote" aria-pressed="false" data-ko="원격 보조 정책" data-en="Remote-assisted policy">원격 보조 정책</button>
+      </div>
+      <button type="button" id="export" class="ghost" data-ko="CSV 내보내기" data-en="Export CSV">CSV 내보내기</button>
+      <button type="button" id="lang" class="ghost" data-ko="English" data-en="한국어" data-ko-label="Switch to English" data-en-label="한국어로 전환" aria-label="Switch to English">English</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <h2 id="hero-title" class="sr-only" data-ko="타임라인" data-en="Timeline">타임라인</h2>
+      <div id="hud" class="hud" role="status" aria-live="polite">
+        <div class="kpi"><span data-ko="상태" data-en="Status">상태</span><b id="hud-status" class="status">—</b></div>
+        <div class="kpi"><span data-ko="순차 지연 일반 / p95" data-en="Sequential typical / p95">순차 지연 일반 / p95</span><b id="hud-total">—</b></div>
+        <div class="kpi"><span data-ko="파이프라인 최대 처리율" data-en="Pipelined max rate">파이프라인 최대 처리율</span><b id="hud-rate">—</b></div>
+        <div class="kpi"><span data-ko="마진 일반 / p95" data-en="Margin typical / p95">마진 일반 / p95</span><b id="hud-margin">—</b></div>
+        <div class="kpi wide"><span data-ko="병목" data-en="Bottleneck">병목</span><b id="hud-bneck">—</b></div>
+        <div class="kpi wide"><span data-ko="목표" data-en="Target">목표</span><b id="hud-target">—</b></div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="timeline" tabindex="0" role="img"
+          data-ko-label="단계별 지연 워터폴. 화살표 키로 단계를 탐색하세요."
+          data-en-label="Stage latency waterfall. Use arrow keys to inspect stages."
+          aria-label="단계별 지연 워터폴. 화살표 키로 단계를 탐색하세요."></canvas>
+        <div id="tip" class="tip" hidden></div>
+      </div>
+      <ul class="legend" aria-hidden="true">
+        <li><i class="lg typ"></i><span data-ko="일반 지연 (순차 시작점)" data-en="Typical (sequential start)">일반 지연 (순차 시작점)</span></li>
+        <li><i class="lg p95"></i><span data-ko="p95 (앞 단계 모두 p95일 때)" data-en="p95 (if all earlier stages hit p95)">p95 (앞 단계 모두 p95일 때)</span></li>
+        <li><i class="lg bn"></i><span data-ko="★ 병목 (typical ÷ 워커 최대)" data-en="★ Bottleneck (max typical ÷ workers)">★ 병목 (typical ÷ 워커 최대)</span></li>
+        <li><i class="lg dl"></i><span data-ko="데드라인" data-en="Deadline">데드라인</span></li>
+      </ul>
+      <p id="live" class="sr-only" aria-live="polite"></p>
+    </section>
+
+    <aside id="hint" class="hint" role="note">
+      <p data-ko="처음이신가요? 아래 표에서 값을 바꾸면 타임라인이 즉시 갱신돼요. 프리셋은 가상의 예시입니다. 타임라인에 마우스를 올리거나 포커스 후 화살표 키로 단계를 살펴보세요."
+         data-en="First time? Edit the table below and the timeline updates instantly. Presets are synthetic examples. Hover the timeline, or focus it and use arrow keys, to inspect stages.">처음이신가요? 아래 표에서 값을 바꾸면 타임라인이 즉시 갱신돼요. 프리셋은 가상의 예시입니다. 타임라인에 마우스를 올리거나 포커스 후 화살표 키로 단계를 살펴보세요.</p>
+      <button type="button" id="hint-close" class="ghost" data-ko="닫기" data-en="Dismiss">닫기</button>
+    </aside>
+
+    <div class="sheet">
+      <details class="card" open>
+        <summary data-ko="루프 설정" data-en="Loop settings">루프 설정</summary>
+        <div class="loop">
+          <label class="f"><span data-ko="목표 루프 주파수 (Hz)" data-en="Target loop rate (Hz)">목표 루프 주파수 (Hz)</span>
+            <input id="hz" type="number" min="0" step="1" inputmode="decimal"></label>
+          <label class="f"><span data-ko="데드라인 (ms)" data-en="Deadline (ms)">데드라인 (ms)</span>
+            <input id="deadline" type="number" min="0" step="0.5" inputmode="decimal"></label>
+        </div>
+        <p class="note" data-ko="판정: p95 합계 ≤ 데드라인이고 최대 처리율 ≥ 목표 Hz면 통과. 일반 합계만 맞으면 주의. 일반 합계 > 데드라인 또는 처리율 부족이면 실패. (경계값 포함)"
+           data-en="Rule: PASS if p95 sum ≤ deadline and max rate ≥ target Hz. WARN if only the typical sum fits. FAIL if typical sum > deadline or max rate < target. Boundaries are inclusive.">판정: p95 합계 ≤ 데드라인이고 최대 처리율 ≥ 목표 Hz면 통과. 일반 합계만 맞으면 주의. 일반 합계 > 데드라인 또는 처리율 부족이면 실패. (경계값 포함)</p>
+      </details>
+
+      <details class="card" open>
+        <summary data-ko="파이프라인 단계" data-en="Pipeline stages">파이프라인 단계</summary>
+        <div id="rows" class="rows"></div>
+        <button type="button" id="add" class="add" data-ko="+ 단계 추가" data-en="+ Add stage">+ 단계 추가</button>
+      </details>
+
+      <details class="card">
+        <summary data-ko="모델과 한계" data-en="Model and limitations">모델과 한계</summary>
+        <ul class="note">
+          <li data-ko="이것은 결정론적 계획용 추정치이며 프로파일러가 아닙니다."
+              data-en="This is a deterministic planning estimate, not a profiler.">이것은 결정론적 계획용 추정치이며 프로파일러가 아닙니다.</li>
+          <li data-ko="순차 지연 = 모든 단계의 합. p95 합계는 모든 단계가 동시에 p95가 되는 보수적 상한입니다."
+              data-en="Sequential latency = sum of all stages. The summed p95 is a conservative bound: every stage at p95 at once.">순차 지연 = 모든 단계의 합. p95 합계는 모든 단계가 동시에 p95가 되는 보수적 상한입니다.</li>
+          <li data-ko="파이프라인 처리율 = 1000 ÷ max(typical ÷ 워커). 워커는 처리율만 높이고 단일 프레임 지연은 줄이지 않습니다."
+              data-en="Pipelined rate = 1000 ÷ max(typical ÷ workers). Workers raise throughput only; they do not shorten one frame's latency.">파이프라인 처리율 = 1000 ÷ max(typical ÷ 워커). 워커는 처리율만 높이고 단일 프레임 지연은 줄이지 않습니다.</li>
+          <li data-ko="상관된 지터, 큐잉, 스케줄링, 전송 중첩, 하드웨어 경합은 반영되지 않으므로 실제 측정이 필요합니다."
+              data-en="Correlated jitter, queueing, scheduling, transfer overlap, and hardware contention are not modeled and require measurement.">상관된 지터, 큐잉, 스케줄링, 전송 중첩, 하드웨어 경합은 반영되지 않으므로 실제 측정이 필요합니다.</li>
+          <li data-ko="모든 값은 브라우저 안에만 머물며 저장하거나 전송하지 않습니다."
+              data-en="All values stay in your browser; nothing is stored or sent.">모든 값은 브라우저 안에만 머물며 저장하거나 전송하지 않습니다.</li>
+        </ul>
+      </details>
+    </div>
+  </main>
+  <noscript><p class="note">JavaScript and WebAssembly are required.</p></noscript>
+  <script type="module" src="boot.js"></script>
+</body>
+</html>

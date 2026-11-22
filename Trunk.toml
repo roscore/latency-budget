@@ -1,0 +1,6 @@
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "/latency-budget/"
+filehash = false
+inject_scripts = false
