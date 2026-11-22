@@ -32,7 +32,7 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Install Trunk
-        run: command -v trunk || cargo install trunk --locked
+        run: command -v trunk || cargo install trunk --locked --version 0.22.2
       - name: Test
         run: cargo test --workspace
       - name: Release build

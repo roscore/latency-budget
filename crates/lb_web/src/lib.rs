@@ -155,6 +155,9 @@ pub fn start() {
             });
             update();
         });
+        on(id, "change", move |_: Event| {
+            if let Some(i) = input(id) { i.set_value(&fmt(clean(i.value_as_number()))) }
+        });
     }
     on("rows", "input", |e: Event| on_row_input(&e, false));
     on("rows", "change", |e: Event| on_row_input(&e, true));

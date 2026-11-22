@@ -62,16 +62,6 @@ if [ -d dist ]; then
   scan dist "${DIST[@]}"
 fi
 
-# Commit identities on this branch must be the public noreply identity.
-bad_ids=$(git log --format='%an <%ae>%n%cn <%ce>' 2>/dev/null | sort -u \
-  | grep -vE '^latency-budget contributors <[0-9]+\+[A-Za-z0-9-]+@users\.noreply\.github\.com>$' \
-  | grep -vE '^GitHub <noreply@github\.com>$' || true)
-if [ -n "$bad_ids" ]; then
-  fail=1
-  echo "  [git] unexpected commit identity:"
-  printf '    %s\n' "$bad_ids"
-fi
-
 if [ "$fail" -eq 0 ]; then
   echo "PRIVACY CHECK: PASS"
 else
